@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>EC-XAI explainer: check an alert's explanation</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>EC-XAI explainer</h1>
+  <p class="lede">Enter a security alert, its evidence and what telemetry you collect. The page explains the alert
+  and checks the explanation with seven fixed formulas (M1–M7). Same input, same output, every time. Nothing leaves
+  your browser.</p>
+</header>
+
+<main>
+<section class="card" id="start">
+  <h2>1. Start from a worked example</h2>
+  <div class="row">
+    <label for="example">Example</label>
+    <select id="example"></select>
+    <button id="load" type="button">Load</button>
+    <button id="blank" type="button" class="secondary">Start blank</button>
+  </div>
+  <p id="example-note" class="note"></p>
+</section>
+
+<section class="card" id="alert">
+  <h2>2. The alert</h2>
+  <div class="grid">
+    <label>Title <input id="a-title" type="text" maxlength="200"></label>
+    <label>Detector <input id="a-detector" type="text" maxlength="200"></label>
+    <label>Score <input id="a-score" type="number" step="0.01" min="0" max="1"></label>
+    <label>Alert threshold <input id="a-threshold" type="number" step="0.01" min="0" max="1"></label>
+    <label>Target tactic <select id="a-tactic"></select></label>
+    <label>Items to show (k) <input id="a-k" type="number" min="1" max="10" step="1"></label>
+  </div>
+</section>
+
+<section class="card" id="evidence">
+  <h2>3. Evidence items</h2>
+  <p class="help">One row per feature. <b>Normal baseline</b> is either a list of values seen in normal activity
+  (e.g. <code>0.1 0.4 0.9 1.2</code>) or the share of normal activity that shows this item (e.g. <code>23.4%</code>).
+  <b>Attribution</b> is the model's weight for the item (e.g. SHAP); leave it blank for rules.</p>
+  <div class="scroll">
+  <table class="edit" id="items-table">
+    <thead><tr><th>Evidence item</th><th>Alert value</th><th>Suspicious when</th><th>Normal baseline</th>
+      <th>Source</th><th>ATT&amp;CK techniques</th><th>Attribution</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <button id="add-item" type="button" class="secondary">Add item</button>
+</section>
+
+<section class="card" id="catalogue">
+  <h2>4. Data catalogue: telemetry sources</h2>
+  <p class="help">List every source you could query for this alert, whether or not it was collected, with the
+  ATT&amp;CK data components it provides.</p>
+  <div class="scroll">
+  <table class="edit" id="sources-table">
+    <thead><tr><th>Source</th><th>State</th><th>Data components (comma-separated)</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <button id="add-source" type="button" class="secondary">Add source</button>
+  <datalist id="components"></datalist>
+</section>
+
+<section class="card output" id="output">
+  <h2>5. Explanation</h2>
+  <div id="narrative"></div>
+  <h3>Assurance checks</h3>
+  <div class="scroll"><table id="metrics-table"><thead><tr><th>Check</th><th>Question</th><th>Value</th>
+    <th>Flag when</th><th>Result</th><th>Action</th></tr></thead><tbody></tbody></table></div>
+  <h3>Evidence ranking</h3>
+  <p class="help">Weight = 1 − benign share. The page shows the top-k items by weight, not by attribution.</p>
+  <div class="scroll"><table id="rank-table"><thead><tr><th>Item</th><th>Value</th><th>Benign share</th>
+    <th>Weight</th><th>Attribution</th><th>In tactic</th><th>Shown</th></tr></thead><tbody></tbody></table></div>
+  <h3>Coverage</h3>
+  <div id="coverage"></div>
+  <h3>Claims checked against the record</h3>
+  <ul id="claims"></ul>
+  <h3>Determinism</h3>
+  <p id="fingerprint" class="mono"></p>
+  <div class="row">
+    <button id="share" type="button" class="secondary">Copy share link</button>
+    <button id="export" type="button" class="secondary">Show input as JSON</button>
+    <button id="import" type="button" class="secondary">Load JSON</button>
+    <span id="share-status" class="note"></span>
+  </div>
+  <textarea id="json" rows="8" hidden spellcheck="false"></textarea>
+</section>
+
+<section class="card" id="how">
+  <h2>How the formulas work</h2>
+  <details open>
+    <summary>Definitions</summary>
+    <p><b>Benign share</b> b(x) is the share of normal-activity values at least as suspicious as the alert's value.
+    An item is <i>benign-common</i> when b ≥ 0.10. <b>Weight</b> w = 1 − b. The explanation shows the top-k
+    items by weight.</p>
+    <p><b>Relevant components</b> K are the ATT&amp;CK data components that detect the mapped techniques in the
+    target tactic plus the techniques of the shown items. <b>Relevant sources</b> are catalogue sources that
+    provide any component in K.</p>
+    <ul class="formulas">
+      <li><b>M1</b> = 1 − mean b over the shown items</li>
+      <li><b>M2</b> = attribution on benign-common items ÷ total positive attribution</li>
+      <li><b>M3</b> = relevant sources collected (or collected and empty) ÷ relevant sources</li>
+      <li><b>M4</b> = components in K that some source provides ÷ |K|; the rest are blind spots</li>
+      <li><b>M5</b> = weight of shown items mapped to the target tactic ÷ weight of shown items</li>
+      <li><b>M6</b> = valid claims ÷ proposed claims; an absence claim is valid only if its source was collected</li>
+      <li><b>M7</b> = overlap of the top-k by weight and the top-k by attribution ÷ k</li>
+    </ul>
+    <p>Each check has a fixed threshold and a fixed action. No language model, no randomness and no network call
+    is involved, so the same input always gives the same explanation and the same fingerprint.</p>
+  </details>
+  <details>
+    <summary>Limits</summary>
+    <p>This is a teaching tool. The worked examples are illustrative inputs, not measured data. The checks test
+    whether an explanation is consistent with the alert record and the data catalogue. They do not test whether the
+    alert is a true attack, and they have not been validated with analysts. The weight here is a simplified
+    environment-calibrated importance (1 − b); the thesis version also uses threat relevance and proximity.</p>
+  </details>
+</section>
+</main>
+
+<footer>
+  <p>Based on the MRes thesis <i>A Lightweight, Domain-Aware Explanation Sidecar for Cyber Threat Alerts: Real-Time SOC Metrics
+  Bound to the Data Catalogue</i>, Rama
+  Vadlamudi, University of Canberra, 2026. ATT&amp;CK Enterprise v16.1 techniques and data components:
+  © The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.</p>
+</footer>
+
+<script src="attack.js"></script>
+<script src="formula.js"></script>
+<script src="examples.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
